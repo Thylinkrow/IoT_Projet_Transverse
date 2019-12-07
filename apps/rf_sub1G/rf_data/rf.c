@@ -167,7 +167,6 @@ void handle_rf_rx_data()
 
 		uint8_t payloadLen = (mHeader.mtype_nbpay & 0x03) * PAYLOAD_BLOC_LEN;
 		uprintf(UART0,"Packet Checked from %x, count: %d, payload is %d bytes long, nb %d of %d:\n\r",mHeader.src,rxCount,payloadLen,(mHeader.idpacket+1),(mHeader.nbpacket+1));
-		uprintf(UART0,"Nb bloc: %d\n\r",(mHeader.mtype_nbpay)&0x03);
 
 		memcpy(readBuff+mHeader.idpacket*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,data+sizeof(header)+sizeof(uint32_t),(mHeader.mtype_nbpay&0x03)*PAYLOAD_BLOC_LEN);
 

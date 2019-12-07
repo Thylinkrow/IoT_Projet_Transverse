@@ -12,6 +12,7 @@
 #include "rf.h"
 #include "encryption.h"
 #include "uartInput.h"
+#include "fire_management.h"
 
 #define MODULE_VERSION 0x03
 #define MODULE_NAME "RF Sub1G - USB"
@@ -109,9 +110,7 @@ int main(void)
 #endif
 
 	memset(uart_buff,'0',UART_BUFF_LEN);
-
-	//encrypt(test,key,5);
-	//send_on_rf(test,5,75,LINKED_ADDRESS,UPLINK);
+	memset(readBuff,'0',MESSAGE_BUFF_LEN);
 
 	while (1)
 		loop();
@@ -137,6 +136,8 @@ void loop()
 		uint32_t nb_bloc = uart_ptr / ENCRYPT_BLOCK_LEN;
 		encrypt(uart_buff,key,nb_bloc);
 		send_on_rf(uart_buff,nb_bloc,uart_ptr,LINKED_ADDRESS,UPLINK);		// Sends a message
+
+		memset(uart_buff,'0',UART_BUFF_LEN);
 		uart_ptr = 0;
 		uart_done = 0;
 	}
@@ -153,16 +154,13 @@ void loop()
 	{
 		uint16_t messageLen = messageInfo.lastPacketLen + messageInfo.nbpacket * MAX_NB_BLOCK * PAYLOAD_BLOC_LEN;
 		uint8_t nb_bloc = messageLen / ENCRYPT_BLOCK_LEN;
+
 		uprintf(UART0,"Mesage is %d bytes long (%d blocs):\n\r",messageLen,(nb_bloc+1));
 		decrypt(readBuff,key,nb_bloc);
 
-		uint16_t i;
-		for(i=0;i<messageLen;i++){
-			uprintf(UART0,"%c",readBuff[i]);
-			if(readBuff[i] == '\n') uprintf(UART0,"\r");
-		}
-		uprintf(UART0,"\n\r");
-		memset(uart_buff,'0',UART_BUFF_LEN);
-		rx_done = 0;
+		fireTreatData(messageLen);
+
+		memset(readBuff,'0',MESSAGE_BUFF_LEN);
+    	rx_done = 0;
 	}
 }

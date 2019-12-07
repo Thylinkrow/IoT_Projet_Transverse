@@ -12,8 +12,8 @@
 #define BROADCAST 0xff
 #define PAYLOAD_BLOC_LEN 16
 
-#define DEVICE_ADDRESS 0x33 // Adress
-#define LINKED_ADDRESS 0x34 // Address of the gateway
+#define DEVICE_ADDRESS 0x34 // Adress
+#define LINKED_ADDRESS 0x33 // Address of the gateway
 #define NETID 0x66          // Network id
 
 #define UPLINK 0x04
