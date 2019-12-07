@@ -145,14 +145,17 @@ void rf_config(void)
 void handle_rf_rx_data()
 {
 	uint8_t data[RF_BUFF_LEN];
-	int8_t ret = 0;
 	uint8_t status = 0;
 
 	// Check for received packet (and get it if any)
-	ret = cc1101_receive_packet(data, RF_BUFF_LEN, &status);
-#ifdef NO_FILTER_DISPLAY	
+#ifdef NO_FILTER_DISPLAY
+	uint8_t ret = 0;
+	ret = cc1101_receive_packet(data, RF_BUFF_LEN, &status);	
 	uprintf(UART0, "Message recived (%d)\n\r",ret);
+#else
+	cc1101_receive_packet(data, RF_BUFF_LEN, &status);
 #endif
+
 
 	// Go back to RX mode
 	cc1101_enter_rx_mode();
@@ -182,13 +185,10 @@ void handle_rf_rx_data()
 
 void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8_t destination, uint8_t msgType)
 {
-
 	uint8_t nbPacketToSend = nbPayload / MAX_NB_BLOCK;
-	uint8_t nbBlocLast = nbPayload % MAX_NB_BLOCK;
+	uint8_t nbBlocLast = nbPayload % MAX_NB_BLOCK + 1;
 	if(nbBlocLast == 0) nbBlocLast = MAX_NB_BLOCK;
 	uint8_t i, j;
-
-	uprintf(UART0, "Header: %d\n\r",sizeof(header));
 
 	header mHeader;
 	mHeader.dest = destination;
@@ -206,6 +206,7 @@ void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8
 		} else {
 			mHeader.packetLen = sizeof(header)+sizeof(uint32_t)+1+(nbBlocLast*PAYLOAD_BLOC_LEN);
 			mHeader.mtype_nbpay = msgType << 2 | nbBlocLast;
+
 		}
 
 		mHeader.nbpacket = nbPacketToSend;
@@ -214,7 +215,7 @@ void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8
 		memcpy(tx_data,&mHeader,sizeof(header));
 		memcpy(tx_data+sizeof(header),&count,sizeof(uint32_t));
 
-		for(j=0;j<(mHeader.mtype_nbpay & 0x03);j++){
+		for(j=0;j<(mHeader.mtype_nbpay & 0x3);j++){
 			memcpy(tx_data+sizeof(header)+sizeof(uint32_t)+j*PAYLOAD_BLOC_LEN,payload+(i*MAX_NB_BLOCK+j)*PAYLOAD_BLOC_LEN,PAYLOAD_BLOC_LEN);
 		}
 

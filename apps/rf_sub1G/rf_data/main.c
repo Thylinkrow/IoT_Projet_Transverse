@@ -42,11 +42,8 @@ const struct pio button = LPC_GPIO_0_12; 			// ISP button
 // Key for decrypting
 uint8_t key[PAYLOAD_BLOC_LEN] = {0x63, 0x7c, 0x77, 0x7b, 0xf2, 0xa5, 0xd8, 0x31, 0x15, 0x04, 0xc7, 0x23, 0xc3, 0x3b, 0xd6, 0x16};
 
-uint8_t test[PAYLOAD_BLOC_LEN*5] = {'a','1','c','e','c','e','c','e','c','e','c','e','1','a','\n','\r',
-									'b','2','c','e','c','e','c','e','c','e','c','e','2','b','\n','\r',
-									'c','3','c','e','c','e','c','e','c','e','c','e','3','c','\n','\r',
-									'd','4','c','e','c','e','c','e','c','e','c','e','4','d','\n','\r',
-									'e','5','c','e','c','e','c','e','c','\n','\r'};
+// TODO: remove
+uint8_t test[368] = {"0,0,0\n0,1,0\n0,2,0\n0,3,0\n0,4,0\n0,5,0\n0,6,0\n0,7,0\n0,8,0\n0,9,0\n1,0,0\n1,1,0\n1,2,0\n1,3,0\n1,4,0\n1,5,0\n1,6,0\n1,7,0\n1,8,0\n1,9,0\n2,0,0\n2,1,0\n2,2,0\n2,3,0\n2,4,0\n2,5,0\n2,6,0\n2,7,0\n2,8,0\n2,9,0\n3,0,0\n3,1,0\n3,2,0\n3,3,0\n3,4,0\n3,5,0\n3,6,0\n3,7,0\n3,8,0\n3,9,0\n4,0,0\n4,1,0\n4,2,0\n4,3,0\n4,4,0\n4,5,0\n4,6,0\n4,7,0\n4,8,0\n4,9,0\n5,0,0\n5,1,0\n5,2,0\n5,3,0\n5,4,0\n5,5,0\n5,6,0\n5,7,0\n5,8,0\n5,9,0\n"};
 
 void loop();
 
@@ -111,6 +108,11 @@ int main(void)
 
 	memset(uart_buff,'0',UART_BUFF_LEN);
 	memset(readBuff,'0',MESSAGE_BUFF_LEN);
+
+	// TODO: remove
+	/*uint32_t nb_bloc = 360 / ENCRYPT_BLOCK_LEN;
+	encrypt(test,key,nb_bloc);
+	send_on_rf(test,nb_bloc,360,LINKED_ADDRESS,UPLINK);*/
 
 	while (1)
 		loop();
