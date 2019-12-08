@@ -26,46 +26,21 @@ void rf_rx_calback(uint32_t gpio)
 	check_rx = 1;
 }
 
-// Calculates the CRC of a char array (not used)
-uint32_t rc_crc32(uint32_t crc, const uint8_t *buf, size_t len)
+// Calculates the CRC of a char array
+uint8_t rc_crc8(uint8_t *data, size_t len)
 {
-	static uint32_t table[256];
-	static int have_table = 0;
-	uint32_t rem;
-	uint8_t octet;
-	int i, j;
-	const uint8_t *p, *q;
-
-	/* This check is not thread safe; there is no mutex. */
-	if (have_table == 0)
-	{
-		/* Calculate CRC table. */
-		for (i = 0; i < 256; i++)
-		{
-			rem = i; /* remainder from polynomial division */
-			for (j = 0; j < 8; j++)
-			{
-				if (rem & 1)
-				{
-					rem >>= 1;
-					rem ^= 0xedb88320;
-				}
-				else
-					rem >>= 1;
-			}
-			table[i] = rem;
-		}
-		have_table = 1;
-	}
-
-	crc = ~crc;
-	q = buf + len;
-	for (p = buf; p < q; p++)
-	{
-		octet = *p; /* Cast to unsigned octet. */
-		crc = (crc >> 8) ^ table[(crc & 0xff) ^ octet];
-	}
-	return ~crc;
+	uint8_t crc = 0xff;
+    size_t i, j;
+    for (i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (j = 0; j < 8; j++) {
+            if ((crc & 0x80) != 0)
+                crc = (uint8_t)((crc << 1) ^ 0x31);
+            else
+                crc <<= 1;
+        }
+    }
+    return crc;
 }
 
 void radio_stuff(){
@@ -99,7 +74,10 @@ uint8_t checkPacket(uint8_t *data)
 	header mHeader;
 	memcpy(&mHeader,data,sizeof(header));
 	uint32_t rxCount;
-	memcpy(&rxCount,data+sizeof(header),sizeof(uint32_t));
+	memcpy(&rxCount,data+sizeof(header),sizeof(rxCount));
+	uint8_t rxCrc,calcCrc;
+	memcpy(&rxCrc,data+sizeof(header)+sizeof(rxCount),sizeof(rxCrc));
+	calcCrc = rc_crc8(data+sizeof(header)+sizeof(rxCount)+sizeof(rxCrc),PAYLOAD_BLOC_LEN*(mHeader.mtype_nbpay&0x3));
 
 #ifdef NO_FILTER_DISPLAY
 	uprintf(UART0, "Check packet:\n\r - destination: %x\n\r - source: %x\n\r - net id: %x\n\r - mtype: %d\n\r",
@@ -114,9 +92,13 @@ uint8_t checkPacket(uint8_t *data)
 		mHeader.nbpacket,
 		mHeader.idpacket
 	);
+	uprintf(UART0, " - CRC rx: %02x - CRC calc: %02x\n\r",rxCrc,calcCrc);
 #endif
 
-	//Check Source & destination
+	if(rxCrc != calcCrc) //Check CRC
+		return 0;
+
+	// Check Source & destination
 	if (mHeader.dest != DEVICE_ADDRESS && mHeader.dest != BROADCAST) // Checks if it is the device's address
 		return 0;
 	if (mHeader.src != LINKED_ADDRESS) // Checks if it is the neighbour's address
@@ -166,12 +148,12 @@ void handle_rf_rx_data()
 		header mHeader;
 		memcpy(&mHeader,data,sizeof(header));
 		uint32_t rxCount;
-		memcpy(&rxCount,data+sizeof(header),sizeof(uint32_t));
+		memcpy(&rxCount,data+sizeof(header),sizeof(rxCount));
 
 		uint8_t payloadLen = (mHeader.mtype_nbpay & 0x03) * PAYLOAD_BLOC_LEN;
 		uprintf(UART0,"Packet Checked from %x, count: %d, payload is %d bytes long, nb %d of %d:\n\r",mHeader.src,rxCount,payloadLen,(mHeader.idpacket+1),(mHeader.nbpacket+1));
 
-		memcpy(readBuff+mHeader.idpacket*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,data+sizeof(header)+sizeof(uint32_t),(mHeader.mtype_nbpay&0x03)*PAYLOAD_BLOC_LEN);
+		memcpy(readBuff+mHeader.idpacket*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,data+sizeof(header)+sizeof(rxCount)+sizeof(uint8_t),(mHeader.mtype_nbpay&0x03)*PAYLOAD_BLOC_LEN);
 
 		uint8_t messageDone = 0;
 		if(mHeader.idpacket==mHeader.nbpacket){
@@ -185,10 +167,11 @@ void handle_rf_rx_data()
 
 void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8_t destination, uint8_t msgType)
 {
+	uint8_t crc;
 	uint8_t nbPacketToSend = nbPayload / MAX_NB_BLOCK;
 	uint8_t nbBlocLast = nbPayload % MAX_NB_BLOCK + 1;
 	if(nbBlocLast == 0) nbBlocLast = MAX_NB_BLOCK;
-	uint8_t i, j;
+	uint8_t i;
 
 	header mHeader;
 	mHeader.dest = destination;
@@ -201,23 +184,24 @@ void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8
 	for(i=0;i<=nbPacketToSend;i++){
 
 		if(i<nbPacketToSend){
-			mHeader.packetLen = sizeof(header)+sizeof(uint32_t)+1+(MAX_NB_BLOCK*PAYLOAD_BLOC_LEN);
 			mHeader.mtype_nbpay = msgType << 2 | MAX_NB_BLOCK;
 		} else {
-			mHeader.packetLen = sizeof(header)+sizeof(uint32_t)+1+(nbBlocLast*PAYLOAD_BLOC_LEN);
 			mHeader.mtype_nbpay = msgType << 2 | nbBlocLast;
-
 		}
+
+		mHeader.packetLen = sizeof(header)+sizeof(count)+1+((mHeader.mtype_nbpay&0x3)*PAYLOAD_BLOC_LEN);
 
 		mHeader.nbpacket = nbPacketToSend;
 		mHeader.idpacket = i;
 
 		memcpy(tx_data,&mHeader,sizeof(header));
-		memcpy(tx_data+sizeof(header),&count,sizeof(uint32_t));
+		memcpy(tx_data+sizeof(header),&count,sizeof(count));
 
-		for(j=0;j<(mHeader.mtype_nbpay & 0x3);j++){
-			memcpy(tx_data+sizeof(header)+sizeof(uint32_t)+j*PAYLOAD_BLOC_LEN,payload+(i*MAX_NB_BLOCK+j)*PAYLOAD_BLOC_LEN,PAYLOAD_BLOC_LEN);
-		}
+		memcpy(tx_data+sizeof(header)+sizeof(count)+sizeof(crc),payload+i*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,PAYLOAD_BLOC_LEN*(mHeader.mtype_nbpay & 0x3));
+
+		crc = rc_crc8(tx_data+sizeof(header)+sizeof(count)+sizeof(crc),PAYLOAD_BLOC_LEN*(mHeader.mtype_nbpay&0x3));
+
+		memcpy(tx_data+sizeof(header)+sizeof(count),&crc,sizeof(crc));
 
 		// Send   
 		if (cc1101_tx_fifo_state() != 0)

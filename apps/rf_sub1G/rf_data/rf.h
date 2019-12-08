@@ -22,7 +22,7 @@
 
 #define DEBUG 1
 
-uint32_t rc_crc32(uint32_t crc, const uint8_t *buf, size_t len);
+uint8_t rc_crc8(uint8_t *data, size_t len);
 
 void radio_stuff();
 
