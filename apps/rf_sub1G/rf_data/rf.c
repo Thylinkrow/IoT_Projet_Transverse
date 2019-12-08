@@ -18,6 +18,7 @@ const struct pio cc1101_gdo2 = LPC_GPIO_0_7;
 
 volatile uint8_t check_rx = 0;
 volatile uint8_t rx_done = 0;
+volatile uint32_t tick = 0;
 
 
 // Calback when reciving a message via RF
@@ -46,6 +47,7 @@ uint8_t rc_crc8(uint8_t *data, size_t len)
 void radio_stuff(){
 
 	uint8_t status = 0;
+	tick ++;
 
 	do	// Do not leave radio in an unknown or unwated state
 	{

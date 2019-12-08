@@ -16,9 +16,16 @@
 #define LINKED_ADDRESS 0x34 // Address of the gateway
 #define NETID 0x66          // Network id
 
-#define UPLINK 0x04
-#define DOWNLINK 0x01
-#define CRC_LENGTH 1
+#define EVERYTYPE 	0b00 << 4
+#define GATEWAYS 	0b01 << 4
+#define AGGREGATORS 0b10 << 4
+#define SENSORS 	0b11 << 4
+
+#define HEARTBEAT 	0b0000
+#define RQ_DATA		0b0001
+#define TERMINATION 0b0010
+
+#define FIRE_MNGMT 	0b0011
 
 #define DEBUG 1
 
@@ -47,5 +54,6 @@ typedef struct header header;
 extern uint8_t rf_specific_settings[];
 extern volatile uint8_t check_rx;
 extern volatile uint8_t rx_done;
+extern volatile uint32_t tick;
 extern uint8_t readBuff[];
 extern header messageInfo;

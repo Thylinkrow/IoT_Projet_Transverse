@@ -112,7 +112,7 @@ int main(void)
 	// TODO: remove
 	/*uint32_t nb_bloc = 360 / ENCRYPT_BLOCK_LEN;
 	encrypt(test,key,nb_bloc);
-	send_on_rf(test,nb_bloc,360,LINKED_ADDRESS,UPLINK);*/
+	send_on_rf(test,nb_bloc,360,LINKED_ADDRESS,(EVERYTYPE|FIRE_MNGMT));*/
 
 	while (1)
 		loop();
@@ -137,7 +137,7 @@ void loop()
 	{
 		uint32_t nb_bloc = uart_ptr / ENCRYPT_BLOCK_LEN;
 		encrypt(uart_buff,key,nb_bloc);
-		send_on_rf(uart_buff,nb_bloc,uart_ptr,LINKED_ADDRESS,UPLINK);		// Sends a message
+		send_on_rf(uart_buff,nb_bloc,uart_ptr,LINKED_ADDRESS,(EVERYTYPE|FIRE_MNGMT));		// Sends a message
 
 		memset(uart_buff,'0',UART_BUFF_LEN);
 		uart_ptr = 0;
