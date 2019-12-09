@@ -3,6 +3,7 @@
 #include "drivers/gpio.h"
 #include "extdrv/cc1101.h"
 #include "core/system.h"
+#include "core/systick.h"
 
 #define RF_BUFF_LEN 64
 #define MESSAGE_BUFF_LEN 512
@@ -11,6 +12,7 @@
 #define SELECTED_FREQ FREQ_SEL_48MHz
 #define BROADCAST 0xff
 #define PAYLOAD_BLOC_LEN 16
+#define WAIT_RX_TIME 5000
 
 #define DEVICE_ADDRESS 0x33 // Adress
 #define LINKED_ADDRESS 0x34 // Address of the gateway
@@ -51,9 +53,22 @@ struct header{
 };
 typedef struct header header;
 
+struct messageInfo{
+	uint32_t count;
+	uint32_t tick;
+	uint32_t rxpack; 
+	uint8_t asked;
+	uint8_t addr;
+	uint8_t nbpacket;
+};
+typedef struct messageInfo messageInfo;
+
 extern uint8_t rf_specific_settings[];
 extern volatile uint8_t check_rx;
 extern volatile uint8_t rx_done;
-extern volatile uint32_t tick;
-extern uint8_t readBuff[];
-extern header messageInfo;
+extern header msgHeader;
+
+extern uint8_t rxBuff[];
+extern uint8_t txBuff[];
+messageInfo rxMsgInfo;
+messageInfo txMsgInfo;

@@ -1,9 +1,12 @@
 #include "rf.h"
 
 uint32_t count = 0;
+header msgHeader;
 
-uint8_t readBuff[MESSAGE_BUFF_LEN];
-header messageInfo;
+uint8_t rxBuff[MESSAGE_BUFF_LEN];
+uint8_t txBuff[MESSAGE_BUFF_LEN];
+messageInfo rxMsgInfo;
+messageInfo txMsgInfo;
 
 uint8_t rf_specific_settings[] = {
 	CC1101_REGS(gdo_config[2]), 0x07,   // GDO_0 - Assert on CRC OK | Disable temp sensor
@@ -18,7 +21,6 @@ const struct pio cc1101_gdo2 = LPC_GPIO_0_7;
 
 volatile uint8_t check_rx = 0;
 volatile uint8_t rx_done = 0;
-volatile uint32_t tick = 0;
 
 
 // Calback when reciving a message via RF
@@ -47,7 +49,21 @@ uint8_t rc_crc8(uint8_t *data, size_t len)
 void radio_stuff(){
 
 	uint8_t status = 0;
-	tick ++;
+
+	uint32_t tick = systick_get_tick_count();
+
+	if(rxMsgInfo.addr != 0 && (tick-rxMsgInfo.tick) > WAIT_RX_TIME*(rxMsgInfo.asked+1)){
+#if DEBUG > 0
+		uprintf(UART0,"Waiting for this packets from %x:\n\r",rxMsgInfo.addr);
+#endif
+		uint8_t i;
+		for(i=0;i<rxMsgInfo.nbpacket;i++){
+#if DEBUG > 0
+			if(!((rxMsgInfo.rxpack >> i) & 1)) uprintf(UART0,"\t- %d\n\r",(i+1));
+#endif
+		}
+		rxMsgInfo.asked ++;
+	}
 
 	do	// Do not leave radio in an unknown or unwated state
 	{
@@ -81,7 +97,7 @@ uint8_t checkPacket(uint8_t *data)
 	memcpy(&rxCrc,data+sizeof(header)+sizeof(rxCount),sizeof(rxCrc));
 	calcCrc = rc_crc8(data+sizeof(header)+sizeof(rxCount)+sizeof(rxCrc),PAYLOAD_BLOC_LEN*(mHeader.mtype_nbpay&0x3));
 
-#ifdef NO_FILTER_DISPLAY
+#if DEBUG > 1
 	uprintf(UART0, "Check packet:\n\r - destination: %x\n\r - source: %x\n\r - net id: %x\n\r - mtype: %d\n\r",
 		mHeader.dest,
 		mHeader.src,
@@ -121,9 +137,13 @@ void rf_config(void)
 	cc1101_update_config(rf_specific_settings, sizeof(rf_specific_settings));
 	set_gpio_callback(rf_rx_calback, &cc1101_gdo0, EDGE_RISING);
 	cc1101_set_address(DEVICE_ADDRESS);
-#ifdef DEBUG
+#if DEBUG > 0
 	uprintf(UART0, "CC1101 RF link init done.\n\r");
 #endif
+
+	rxMsgInfo.addr = 0;
+	txMsgInfo.addr = 0;
+
 }
 
 void handle_rf_rx_data()
@@ -132,7 +152,7 @@ void handle_rf_rx_data()
 	uint8_t status = 0;
 
 	// Check for received packet (and get it if any)
-#ifdef NO_FILTER_DISPLAY
+#if DEBUG > 1
 	uint8_t ret = 0;
 	ret = cc1101_receive_packet(data, RF_BUFF_LEN, &status);	
 	uprintf(UART0, "Message recived (%d)\n\r",ret);
@@ -153,16 +173,50 @@ void handle_rf_rx_data()
 		memcpy(&rxCount,data+sizeof(header),sizeof(rxCount));
 
 		uint8_t payloadLen = (mHeader.mtype_nbpay & 0x03) * PAYLOAD_BLOC_LEN;
+#if DEBUG > 0
 		uprintf(UART0,"Packet Checked from %x, count: %d, payload is %d bytes long, nb %d of %d:\n\r",mHeader.src,rxCount,payloadLen,(mHeader.idpacket+1),(mHeader.nbpacket+1));
+#endif
 
-		memcpy(readBuff+mHeader.idpacket*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,data+sizeof(header)+sizeof(rxCount)+sizeof(uint8_t),(mHeader.mtype_nbpay&0x03)*PAYLOAD_BLOC_LEN);
+		memcpy(rxBuff+mHeader.idpacket*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,data+sizeof(header)+sizeof(rxCount)+sizeof(uint8_t),(mHeader.mtype_nbpay&0x03)*PAYLOAD_BLOC_LEN);
 
-		uint8_t messageDone = 0;
-		if(mHeader.idpacket==mHeader.nbpacket){
-			uprintf(UART0,"Message is complete\n\r");
-			messageInfo = mHeader;
-			messageDone = 1;
+		if(rxMsgInfo.addr == 0){
+
+			rxMsgInfo.count = rxCount;
+			rxMsgInfo.addr = mHeader.src;
+			rxMsgInfo.nbpacket = mHeader.nbpacket;
+
 		}
+		
+		if(rxMsgInfo.addr == mHeader.src && rxMsgInfo.count == rxCount){
+
+			rxMsgInfo.rxpack = rxMsgInfo.rxpack | (1 << mHeader.idpacket);
+			rxMsgInfo.tick = systick_get_tick_count();
+
+		}
+
+		uint8_t messageDone = 1;
+
+		uint8_t i;
+		for(i=0;i<=rxMsgInfo.nbpacket;i++){
+			if(!((rxMsgInfo.rxpack >> i) & 1)){
+				messageDone = 0;
+#if DEBUG > 1
+				uprintf(UART0,"Miss packet %d\n\r",(i+1));
+#endif
+			}
+		}
+
+		if(messageDone){
+			rxMsgInfo.addr = 0;
+			rxMsgInfo.asked = 0;
+			msgHeader = mHeader;
+		}
+
+		/*if(mHeader.idpacket==mHeader.nbpacket){
+			uprintf(UART0,"Message is complete\n\r");
+			msgHeader = mHeader;
+			messageDone = 1;
+		}*/
 		rx_done = messageDone;
 	}
 }
@@ -180,6 +234,12 @@ void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8
 	mHeader.src = DEVICE_ADDRESS;
 	mHeader.netid = NETID;
 	mHeader.lastPacketLen = messageLen % (PAYLOAD_BLOC_LEN*MAX_NB_BLOCK);
+	mHeader.nbpacket = nbPacketToSend;
+
+	txMsgInfo.count = count;
+	txMsgInfo.tick = systick_get_tick_count();
+	txMsgInfo.addr = destination;
+	txMsgInfo.nbpacket = nbPacketToSend;
 
 	uint8_t tx_data[BUFF_LEN];
 
@@ -192,8 +252,6 @@ void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8
 		}
 
 		mHeader.packetLen = sizeof(header)+sizeof(count)+1+((mHeader.mtype_nbpay&0x3)*PAYLOAD_BLOC_LEN);
-
-		mHeader.nbpacket = nbPacketToSend;
 		mHeader.idpacket = i;
 
 		memcpy(tx_data,&mHeader,sizeof(header));
@@ -213,7 +271,7 @@ void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8
 
 		int ret = cc1101_send_packet(tx_data, mHeader.packetLen+1);
 
-#ifdef DEBUG	
+#if DEBUG > 0	
 		uprintf(UART0, "Message sent: %d (%x to %x)\n\r",ret,mHeader.src,mHeader.dest);
 #endif
 		msleep(250);

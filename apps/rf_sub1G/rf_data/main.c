@@ -63,7 +63,7 @@ void system_init()
 // Define our fault handler
 void fault_info(const char *name, uint32_t len)
 {
-#ifdef DEBUG
+#if DEBUG > 0
 	uprintf(UART0, name);
 #endif
 	while (1);
@@ -101,13 +101,13 @@ int main(void)
 	rf_config();													// Radio init
 	set_gpio_callback(activate_chenillard, &button, EDGE_RISING);	// Activate the chenillard on Rising edge (button release)
 
-#ifdef DEBUG	
+#if DEBUG > 0	
 	uprintf(UART0, "App started\n\r");
 	uprintf(UART0, "\t- Device address: %x\n\r\t- Linked address: %x\n\r",DEVICE_ADDRESS,LINKED_ADDRESS);
 #endif
 
 	memset(uart_buff,'0',UART_BUFF_LEN);
-	memset(readBuff,'0',MESSAGE_BUFF_LEN);
+	memset(rxBuff,'0',MESSAGE_BUFF_LEN);
 
 	// TODO: remove
 	/*uint32_t nb_bloc = 360 / ENCRYPT_BLOCK_LEN;
@@ -154,15 +154,15 @@ void loop()
 	
 	if (rx_done == 1)			// Check if has recieved a complete message (all packet recieved)
 	{
-		uint16_t messageLen = messageInfo.lastPacketLen + messageInfo.nbpacket * MAX_NB_BLOCK * PAYLOAD_BLOC_LEN;
+		uint16_t messageLen = msgHeader.lastPacketLen + msgHeader.nbpacket * MAX_NB_BLOCK * PAYLOAD_BLOC_LEN;
 		uint8_t nb_bloc = messageLen / ENCRYPT_BLOCK_LEN;
 
 		uprintf(UART0,"Mesage is %d bytes long (%d blocs):\n\r",messageLen,(nb_bloc+1));
-		decrypt(readBuff,key,nb_bloc);
+		decrypt(rxBuff,key,nb_bloc);
 
 		fireTreatData(messageLen);
 
-		memset(readBuff,'0',MESSAGE_BUFF_LEN);
+		memset(rxBuff,'0',MESSAGE_BUFF_LEN);
     	rx_done = 0;
 	}
 }
