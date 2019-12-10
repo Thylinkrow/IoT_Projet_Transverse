@@ -13,9 +13,11 @@
 #define BROADCAST 0xff
 #define PAYLOAD_BLOC_LEN 16
 #define WAIT_RX_TIME 5000
+#define QUEUE_SIZE 32
+#define SEND_TIMEOUT 350
 
-#define DEVICE_ADDRESS 0x33 // Adress
-#define LINKED_ADDRESS 0x34 // Address of the gateway
+#define DEVICE_ADDRESS 0x34 // Adress
+#define LINKED_ADDRESS 0x33 // Address of the gateway
 #define NETID 0x66          // Network id
 
 #define EVERYTYPE 	0b00 << 4
@@ -39,7 +41,7 @@ uint8_t checkPacket(uint8_t *data);
 void rf_config(void);
 
 void handle_rf_rx_data();
-void send_on_rf(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8_t destination, uint8_t msgType);
+void send_message(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uint8_t destination, uint8_t msgType);
 
 struct header{
 	uint8_t packetLen;
@@ -60,8 +62,22 @@ struct messageInfo{
 	uint8_t asked;
 	uint8_t addr;
 	uint8_t nbpacket;
+	uint8_t lastPacketLen;
+	uint8_t msgType;
+	uint8_t nbPayloadLast;
 };
 typedef struct messageInfo messageInfo;
+
+struct sendJob{
+	uint8_t* data;
+	uint8_t idpacket;
+};
+typedef struct sendJob sendJob;
+
+void initJobs();
+uint8_t execJob();
+uint8_t addJob(messageInfo info, uint8_t* data, uint8_t idpacket);
+void send_on_rf();
 
 extern uint8_t rf_specific_settings[];
 extern volatile uint8_t check_rx;

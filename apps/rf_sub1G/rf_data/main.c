@@ -43,7 +43,7 @@ const struct pio button = LPC_GPIO_0_12; 			// ISP button
 uint8_t key[PAYLOAD_BLOC_LEN] = {0x63, 0x7c, 0x77, 0x7b, 0xf2, 0xa5, 0xd8, 0x31, 0x15, 0x04, 0xc7, 0x23, 0xc3, 0x3b, 0xd6, 0x16};
 
 // TODO: remove
-uint8_t test[368] = {"0,0,0\n0,1,0\n0,2,0\n0,3,0\n0,4,0\n0,5,0\n0,6,0\n0,7,0\n0,8,0\n0,9,0\n1,0,0\n1,1,0\n1,2,0\n1,3,0\n1,4,0\n1,5,0\n1,6,0\n1,7,0\n1,8,0\n1,9,0\n2,0,0\n2,1,0\n2,2,0\n2,3,0\n2,4,0\n2,5,0\n2,6,0\n2,7,0\n2,8,0\n2,9,0\n3,0,0\n3,1,0\n3,2,0\n3,3,0\n3,4,0\n3,5,0\n3,6,0\n3,7,0\n3,8,0\n3,9,0\n4,0,0\n4,1,0\n4,2,0\n4,3,0\n4,4,0\n4,5,0\n4,6,0\n4,7,0\n4,8,0\n4,9,0\n5,0,0\n5,1,0\n5,2,0\n5,3,0\n5,4,0\n5,5,0\n5,6,0\n5,7,0\n5,8,0\n5,9,0\n"};
+uint8_t buff[512] = {"0,0,0\n0,1,0\n0,2,0\n0,3,0\n0,4,0\n0,5,0\n0,6,0\n0,7,0\n0,8,0\n0,9,0\n1,0,0\n1,1,0\n1,2,0\n1,3,0\n1,4,0\n1,5,0\n1,6,0\n1,7,0\n1,8,0\n1,9,0\n2,0,0\n2,1,0\n2,2,0\n2,3,0\n2,4,0\n2,5,0\n2,6,0\n2,7,0\n2,8,0\n2,9,0\n3,0,0\n3,1,0\n3,2,0\n3,3,0\n3,4,0\n3,5,0\n3,6,0\n3,7,0\n3,8,0\n3,9,0\n4,0,0\n4,1,0\n4,2,0\n4,3,0\n4,4,0\n4,5,0\n4,6,0\n4,7,0\n4,8,0\n4,9,0\n5,0,0\n5,1,0\n5,2,0\n5,3,0\n5,4,0\n5,5,0\n5,6,0\n5,7,0\n5,8,0\n5,9,0\n"};
 
 void loop();
 
@@ -112,7 +112,7 @@ int main(void)
 	// TODO: remove
 	/*uint32_t nb_bloc = 360 / ENCRYPT_BLOCK_LEN;
 	encrypt(test,key,nb_bloc);
-	send_on_rf(test,nb_bloc,360,LINKED_ADDRESS,(EVERYTYPE|FIRE_MNGMT));*/
+	send_message(test,nb_bloc,360,LINKED_ADDRESS,(EVERYTYPE|FIRE_MNGMT));*/
 
 	while (1)
 		loop();
@@ -136,13 +136,18 @@ void loop()
 	if (uart_done == 1)			// Check if reading something from the UART
 	{
 		uint32_t nb_bloc = uart_ptr / ENCRYPT_BLOCK_LEN;
-		encrypt(uart_buff,key,nb_bloc);
-		send_on_rf(uart_buff,nb_bloc,uart_ptr,LINKED_ADDRESS,(EVERYTYPE|FIRE_MNGMT));		// Sends a message
+
+		memcpy(&buff,&uart_buff,512);
+
+		encrypt(buff,key,nb_bloc);
+		send_message(buff,nb_bloc,uart_ptr,LINKED_ADDRESS,(EVERYTYPE|FIRE_MNGMT));		// Sends a message
 
 		memset(uart_buff,'0',UART_BUFF_LEN);
 		uart_ptr = 0;
 		uart_done = 0;
 	}
+
+	execJob();
 
 	radio_stuff();
 
