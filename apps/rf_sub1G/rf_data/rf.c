@@ -7,9 +7,12 @@ messageInfo infos[QUEUE_SIZE];
 uint8_t tx_data[BUFF_LEN];
 
 uint8_t rxBuff[MESSAGE_BUFF_LEN];
-uint8_t txBuff[MESSAGE_BUFF_LEN];
 messageInfo rxMsgInfo;
+messageInfo txMsgInfo;
 uint32_t last_send_tick = 0;
+
+rqInfo rxRqInfo;
+rqInfo txRqInfo;
 
 uint8_t rf_specific_settings[] = {
 	CC1101_REGS(gdo_config[2]), 0x07,   // GDO_0 - Assert on CRC OK | Disable temp sensor
@@ -180,43 +183,69 @@ void handle_rf_rx_data()
 		uprintf(UART0,"Packet Checked from %x, count: %d, payload is %d bytes long, nb %d of %d:\n\r",mHeader.src,rxCount,payloadLen,(mHeader.idpacket+1),(mHeader.nbpacket+1));
 #endif
 
-		memcpy(rxBuff+mHeader.idpacket*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,data+sizeof(header)+sizeof(rxCount)+sizeof(uint8_t),(mHeader.mtype_nbpay&0x03)*PAYLOAD_BLOC_LEN);
-
-		if(rxMsgInfo.addr == 0){
-
-			rxMsgInfo.count = rxCount;
-			rxMsgInfo.addr = mHeader.src;
-			rxMsgInfo.nbpacket = mHeader.nbpacket;
-
-		}
-		
-		if(rxMsgInfo.addr == mHeader.src && rxMsgInfo.count == rxCount){
-
-			rxMsgInfo.rxpack = rxMsgInfo.rxpack | (1 << mHeader.idpacket);
-			rxMsgInfo.tick = systick_get_tick_count();
-
-		}
-
-		uint8_t messageDone = 1;
-
-		uint8_t i;
-		for(i=0;i<=rxMsgInfo.nbpacket;i++){
-			if(!((rxMsgInfo.rxpack >> i) & 1)){
-				messageDone = 0;
+		if(((mHeader.mtype_nbpay>>2)&0xf) == RQ_DATA){
 #if DEBUG > 1
-				uprintf(UART0,"Miss packet %d\n\r",(i+1));
+			uprintf(UART0,"RQ_DATA\n\r");
 #endif
+
+			memcpy(&rxRqInfo,data+sizeof(header)+sizeof(rxCount),sizeof(rxRqInfo));
+
+			uprintf(UART0,"count %d - rxpack: %x - addr: %x\n\r",rxRqInfo.count,rxRqInfo.rxpack,rxRqInfo.addr);
+
+		} else if(((mHeader.mtype_nbpay>>2)&0xf) == TERMINATION){
+#if DEBUG > 1
+			uprintf(UART0,"TERMINATION\n\r");
+#endif
+
+
+		} else if(((mHeader.mtype_nbpay>>2)&0xf) == FIRE_MNGMT){
+#if DEBUG > 1
+			uprintf(UART0,"FIRE_MNGMT\n\r");
+#endif
+
+			memcpy(rxBuff+mHeader.idpacket*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,data+sizeof(header)+sizeof(rxCount)+sizeof(uint8_t),(mHeader.mtype_nbpay&0x03)*PAYLOAD_BLOC_LEN);
+
+			if(rxMsgInfo.addr == 0){
+
+				rxMsgInfo.count = rxCount;
+				rxMsgInfo.addr = mHeader.src;
+				rxMsgInfo.nbpacket = mHeader.nbpacket;
+
 			}
+			
+			if(rxMsgInfo.addr == mHeader.src && rxMsgInfo.count == rxCount){
+
+				rxMsgInfo.rxpack = rxMsgInfo.rxpack | (1 << mHeader.idpacket);
+				rxMsgInfo.tick = systick_get_tick_count();
+
+			}
+
+			uint8_t messageDone = 1;
+
+			uint8_t i;
+			for(i=0;i<=rxMsgInfo.nbpacket;i++){
+				if(!((rxMsgInfo.rxpack >> i) & 1)){
+					messageDone = 0;
+#if DEBUG > 1
+					uprintf(UART0,"Miss packet %d\n\r",(i+1));
+#endif
+				}
+			}
+
+			if(messageDone){
+				rxMsgInfo.addr = 0;
+				rxMsgInfo.rxpack = 0;
+				rxMsgInfo.asked = 0;
+				msgHeader = mHeader;
+			}
+
+			rx_done = messageDone;
+		} else {
+#if DEBUG > 0
+			uprintf(UART0,"Unidentify\n\r");
+#endif
 		}
 
-		if(messageDone){
-			rxMsgInfo.addr = 0;
-			rxMsgInfo.rxpack = 0;
-			rxMsgInfo.asked = 0;
-			msgHeader = mHeader;
-		}
-
-		rx_done = messageDone;
 	}
 }
 
@@ -226,7 +255,6 @@ void send_message(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uin
 	uint8_t nbBlocLast = nbPayload % MAX_NB_BLOCK + 1;
 	if(nbBlocLast == 0) nbBlocLast = MAX_NB_BLOCK;
 
-	messageInfo txMsgInfo;
 	txMsgInfo.count = count;
 	txMsgInfo.tick = systick_get_tick_count();
 	txMsgInfo.addr = destination;
@@ -237,7 +265,7 @@ void send_message(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uin
 
 	uint8_t i;
 	for(i=0;i<=nbPacketToSend;i++){
-		addJob(txMsgInfo,payload+i*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,i);
+		addJob(payload+i*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,i);
 	}
 	count++;
 }
@@ -279,7 +307,7 @@ uint8_t execJob(){
 	return 1;
 }
 
-uint8_t addJob(messageInfo info, uint8_t* data, uint8_t idpacket){
+uint8_t addJob(uint8_t* data, uint8_t idpacket){
 
 	uint8_t i = 0;
 	while(jobs[i].data != NULL && i < QUEUE_SIZE){
@@ -289,7 +317,7 @@ uint8_t addJob(messageInfo info, uint8_t* data, uint8_t idpacket){
 	if(i>=QUEUE_SIZE)
 		return 0;
 
-	infos[i] = info;
+	infos[i] = txMsgInfo;
 	jobs[i].data = data;
 	jobs[i].idpacket = idpacket;
 
@@ -299,6 +327,27 @@ uint8_t addJob(messageInfo info, uint8_t* data, uint8_t idpacket){
 
 	return (i+1);
 }
+
+/*uint8_t addRqJob(uint8_t* data, uint8_t idpacket){
+
+	uint8_t i = 0;
+	while(jobs[i].data != NULL && i < QUEUE_SIZE){
+		i++;
+	}
+
+	if(i>=QUEUE_SIZE)
+		return 0;
+
+	infos[i] = txMsgInfo;
+	jobs[i].data = data;
+	jobs[i].idpacket = idpacket;
+
+#if DEBUG > 0
+	uprintf(UART0,"Added Job (%d) to %x (%d on %d)\n\r",i,infos[i].addr,jobs[i].idpacket,infos[i].nbpacket);
+#endif
+
+	return (i+1);
+}*/
 
 void send_on_rf(){
 
