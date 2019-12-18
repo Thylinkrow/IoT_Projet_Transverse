@@ -14,10 +14,11 @@
 #define PAYLOAD_BLOC_LEN 16
 #define WAIT_RX_TIME 5000
 #define QUEUE_SIZE 32
-#define SEND_TIMEOUT 350
+#define SEND_TIMEOUT 300
+#define MAX_RQ_ASK 3
 
-#define DEVICE_ADDRESS 0x33 // Adress
-#define LINKED_ADDRESS 0x34 // Address of the gateway
+#define DEVICE_ADDRESS 0x34 // Adress
+#define LINKED_ADDRESS 0x33 // Address of the gateway
 #define NETID 0x66          // Network id
 
 #define EVERYTYPE 	0x0 << 4
@@ -84,6 +85,7 @@ typedef struct sendJob sendJob;
 void initJobs();
 uint8_t execJob();
 uint8_t addJob(uint8_t* data, uint8_t idpacket);
+uint8_t addRqJob();
 void send_on_rf();
 
 extern uint8_t rf_specific_settings[];

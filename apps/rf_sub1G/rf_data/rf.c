@@ -9,10 +9,13 @@ uint8_t tx_data[BUFF_LEN];
 uint8_t rxBuff[MESSAGE_BUFF_LEN];
 messageInfo rxMsgInfo;
 messageInfo txMsgInfo;
+messageInfo rqMsgInfo;
 uint32_t last_send_tick = 0;
 
 rqInfo rxRqInfo;
 rqInfo txRqInfo;
+
+uint8_t txBuff[512];
 
 uint8_t rf_specific_settings[] = {
 	CC1101_REGS(gdo_config[2]), 0x07,   // GDO_0 - Assert on CRC OK | Disable temp sensor
@@ -60,15 +63,52 @@ void radio_stuff(){
 
 	if(rxMsgInfo.addr != 0 && (tick-rxMsgInfo.tick) > WAIT_RX_TIME*(rxMsgInfo.asked+1)){
 #if DEBUG > 0
-		uprintf(UART0,"Waiting for this packets from %x:\n\r",rxMsgInfo.addr);
+		uprintf(UART0,"Waiting for this packets from %x with count %d:\n\r",rxMsgInfo.addr,rxMsgInfo.count);
 #endif
 		uint8_t i;
-		for(i=0;i<rxMsgInfo.nbpacket;i++){
+		for(i=0;i<=rxMsgInfo.nbpacket;i++){
 #if DEBUG > 0
-			if(!((rxMsgInfo.rxpack >> i) & 1)) uprintf(UART0,"\t- %d\n\r",(i+1));
+			if(!((rxMsgInfo.rxpack >> i) & 1)) uprintf(UART0,"%d ",(i+1));
 #endif
 		}
+#if DEBUG > 0
+		uprintf(UART0,"\n\r");
+#endif
 		rxMsgInfo.asked ++;
+
+		if(rxMsgInfo.asked>MAX_RQ_ASK){
+#if DEBUG > 0
+		uprintf(UART0,"Asked too many times, ending packet\n\r");
+#endif
+		rxMsgInfo.addr = 0;
+		rxMsgInfo.rxpack = 0;
+		rxMsgInfo.asked = 0;
+		} else {
+#if DEBUG > 0
+			uprintf(UART0,"Asking for resend (%d)\n\r",rxMsgInfo.asked);
+#endif
+
+			rqMsgInfo.count = count;
+			rqMsgInfo.tick = systick_get_tick_count();
+			rqMsgInfo.addr = rxMsgInfo.addr;
+			rqMsgInfo.nbpacket = 0;
+			rqMsgInfo.lastPacketLen = 4;
+			rqMsgInfo.msgType = EVERYTYPE|RQ_DATA;
+			rqMsgInfo.nbPayloadLast = 1;
+
+			txRqInfo.count = rxMsgInfo.count;
+			txRqInfo.addr = rxMsgInfo.addr;
+			txRqInfo.rxpack = rxMsgInfo.rxpack;
+
+			count ++;
+
+			addRqJob();
+		}
+	}
+
+	if(txMsgInfo.addr != 0 && (tick-txMsgInfo.tick) > WAIT_RX_TIME*2){
+		txMsgInfo.addr = 0;
+		txMsgInfo.tick = 0;
 	}
 
 	do	// Do not leave radio in an unknown or unwated state
@@ -190,7 +230,13 @@ void handle_rf_rx_data()
 
 			memcpy(&rxRqInfo,data+sizeof(header)+sizeof(rxCount),sizeof(rxRqInfo));
 
-			uprintf(UART0,"count %d - rxpack: %x - addr: %x\n\r",rxRqInfo.count,rxRqInfo.rxpack,rxRqInfo.addr);
+			uint8_t i;
+
+			for(i=0;i<=txMsgInfo.nbpacket;i++){
+				if(!(rxRqInfo.rxpack>>i)&1){
+					addJob(txBuff+i*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,i);
+				}
+			}
 
 		} else if(((mHeader.mtype_nbpay>>2)&0xf) == TERMINATION){
 #if DEBUG > 1
@@ -241,8 +287,8 @@ void handle_rf_rx_data()
 
 			rx_done = messageDone;
 		} else {
-#if DEBUG > 0
-			uprintf(UART0,"Unidentify\n\r");
+#if DEBUG > 1
+			uprintf(UART0,"Unidentified\n\r");
 #endif
 		}
 
@@ -255,6 +301,8 @@ void send_message(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uin
 	uint8_t nbBlocLast = nbPayload % MAX_NB_BLOCK + 1;
 	if(nbBlocLast == 0) nbBlocLast = MAX_NB_BLOCK;
 
+	memcpy(txBuff,payload,MESSAGE_BUFF_LEN);
+
 	txMsgInfo.count = count;
 	txMsgInfo.tick = systick_get_tick_count();
 	txMsgInfo.addr = destination;
@@ -265,7 +313,7 @@ void send_message(uint8_t *payload, uint16_t nbPayload, uint16_t messageLen, uin
 
 	uint8_t i;
 	for(i=0;i<=nbPacketToSend;i++){
-		addJob(payload+i*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,i);
+		addJob(txBuff+i*MAX_NB_BLOCK*PAYLOAD_BLOC_LEN,i);
 	}
 	count++;
 }
@@ -287,8 +335,8 @@ uint8_t execJob(){
 	if((t-last_send_tick)<SEND_TIMEOUT)
 		return 0;
 
-#if DEBUG > 1
-	uprintf(UART0,"Executing Job to %x (%d on %d)\n\r",infos[0].addr,jobs[0].idpacket,infos[0].nbpacket);
+#if DEBUG > 0
+	uprintf(UART0,"Executing Job (Rq) to %x (%d on %d) with type: %02x\n\r",infos[0].addr,jobs[0].idpacket,infos[0].nbpacket,infos[0].msgType);
 #endif
 	
 	send_on_rf();
@@ -322,13 +370,13 @@ uint8_t addJob(uint8_t* data, uint8_t idpacket){
 	jobs[i].idpacket = idpacket;
 
 #if DEBUG > 0
-	uprintf(UART0,"Added Job (%d) to %x (%d on %d)\n\r",i,infos[i].addr,jobs[i].idpacket,infos[i].nbpacket);
+	uprintf(UART0,"Added Job to %x (%d on %d)\n\r",i,infos[i].addr,jobs[i].idpacket,infos[i].nbpacket);
 #endif
 
 	return (i+1);
 }
 
-/*uint8_t addRqJob(uint8_t* data, uint8_t idpacket){
+uint8_t addRqJob(){
 
 	uint8_t i = 0;
 	while(jobs[i].data != NULL && i < QUEUE_SIZE){
@@ -338,18 +386,25 @@ uint8_t addJob(uint8_t* data, uint8_t idpacket){
 	if(i>=QUEUE_SIZE)
 		return 0;
 
-	infos[i] = txMsgInfo;
-	jobs[i].data = data;
-	jobs[i].idpacket = idpacket;
+	uint8_t d[16];
+	memcpy(d,&txRqInfo,sizeof(txRqInfo));
+
+	infos[i] = rqMsgInfo;
+	jobs[i].data = d;
+	jobs[i].idpacket = 0;
 
 #if DEBUG > 0
-	uprintf(UART0,"Added Job (%d) to %x (%d on %d)\n\r",i,infos[i].addr,jobs[i].idpacket,infos[i].nbpacket);
+	uprintf(UART0,"Added Job (Rq) to %x (%d on %d)\n\r",infos[i].addr,jobs[i].idpacket,infos[i].nbpacket);
 #endif
 
 	return (i+1);
-}*/
+}
 
 void send_on_rf(){
+
+#if DEBUG > 0	
+	uprintf(UART0, "Sending");
+#endif
 
 	header mHeader;
 	mHeader.dest = infos[0].addr;
@@ -359,27 +414,47 @@ void send_on_rf(){
 	mHeader.nbpacket = infos[0].nbpacket;
 	mHeader.idpacket = jobs[0].idpacket;
 
+#if DEBUG > 0	
+	uprintf(UART0, ".");
+#endif
+
 	if(jobs[0].idpacket<infos[0].nbpacket){
 		mHeader.mtype_nbpay = infos[0].msgType << 2 | MAX_NB_BLOCK;
 	} else {
 		mHeader.mtype_nbpay = infos[0].msgType << 2 | infos[0].nbPayloadLast;
 	}
 
+#if DEBUG > 0	
+	uprintf(UART0, ".");
+#endif
+
 	mHeader.packetLen = sizeof(header)+sizeof(count)+1+((mHeader.mtype_nbpay&0x3)*PAYLOAD_BLOC_LEN);
 
 	memcpy(tx_data,&mHeader,sizeof(header));
 	memcpy(tx_data+sizeof(header),&(infos[0].count),sizeof(infos[0].count));
+
+#if DEBUG > 0	
+	uprintf(UART0, ".");
+#endif
 
 	uint8_t crc;
 	memcpy(tx_data+sizeof(header)+sizeof(count)+sizeof(crc),jobs[0].data,PAYLOAD_BLOC_LEN*(mHeader.mtype_nbpay & 0x3));
 	crc = rc_crc8(tx_data+sizeof(header)+sizeof(count)+sizeof(crc),PAYLOAD_BLOC_LEN*(mHeader.mtype_nbpay&0x3));
 	memcpy(tx_data+sizeof(header)+sizeof(count),&crc,sizeof(crc));
 
+#if DEBUG > 0	
+	uprintf(UART0, ".");
+#endif
+
 	// Send   
 	if (cc1101_tx_fifo_state() != 0)
 	{
 		cc1101_flush_tx_fifo();
 	}
+
+#if DEBUG > 0	
+	uprintf(UART0, ". ");
+#endif
 
 	int ret = cc1101_send_packet(tx_data, mHeader.packetLen+1);
 
