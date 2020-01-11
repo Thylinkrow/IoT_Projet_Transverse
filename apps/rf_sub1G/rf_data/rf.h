@@ -32,7 +32,7 @@
 
 #define FIRE_MNGMT 	0x3
 
-#define DEBUG 1
+#define DEBUG -1
 
 uint8_t rc_crc8(uint8_t *data, size_t len);
 
