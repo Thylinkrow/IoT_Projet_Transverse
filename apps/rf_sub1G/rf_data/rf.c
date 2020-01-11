@@ -198,14 +198,18 @@ void handle_rf_rx_data()
 	uint8_t status = 0;
 
 	// Check for received packet (and get it if any)
-#if DEBUG > 1
 	uint8_t ret = 0;
-	ret = cc1101_receive_packet(data, RF_BUFF_LEN, &status);	
+	ret = cc1101_receive_packet(data, RF_BUFF_LEN, &status);
+	
+#if DEBUG > 1	
 	uprintf(UART0, "Message recived (%d)\n\r",ret);
-#else
-	cc1101_receive_packet(data, RF_BUFF_LEN, &status);
 #endif
 
+	if(ret == 0){
+		rf_config();
+		check_rx = 0;
+		return;
+	}
 
 	// Go back to RX mode
 	cc1101_enter_rx_mode();
@@ -218,8 +222,8 @@ void handle_rf_rx_data()
 		uint32_t rxCount;
 		memcpy(&rxCount,data+sizeof(header),sizeof(rxCount));
 
-		uint8_t payloadLen = (mHeader.mtype_nbpay & 0x03) * PAYLOAD_BLOC_LEN;
 #if DEBUG > 0
+		uint8_t payloadLen = (mHeader.mtype_nbpay & 0x03) * PAYLOAD_BLOC_LEN;
 		uprintf(UART0,"Packet Checked from %x, count: %d, payload is %d bytes long, nb %d of %d:\n\r",mHeader.src,rxCount,payloadLen,(mHeader.idpacket+1),(mHeader.nbpacket+1));
 #endif
 
@@ -456,10 +460,11 @@ void send_on_rf(){
 	uprintf(UART0, ". ");
 #endif
 
-	int ret = cc1101_send_packet(tx_data, mHeader.packetLen+1);
-
 #if DEBUG > 0	
+	int ret = cc1101_send_packet(tx_data, mHeader.packetLen+1);
 	uprintf(UART0, "Message sent: %d (%x to %x)\n\r",ret,mHeader.src,mHeader.dest);
+#else
+	cc1101_send_packet(tx_data, mHeader.packetLen+1);
 #endif
 
 }
