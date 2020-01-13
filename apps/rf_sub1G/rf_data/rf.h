@@ -17,10 +17,6 @@
 #define SEND_TIMEOUT 300
 #define MAX_RQ_ASK 3
 
-#define DEVICE_ADDRESS 0x34 // Adress
-#define LINKED_ADDRESS 0x33 // Address of the gateway
-#define NETID 0x66          // Network id
-
 #define EVERYTYPE 	0x0 << 4
 #define GATEWAYS 	0x1 << 4
 #define AGGREGATORS 0x2 << 4
@@ -33,6 +29,11 @@
 #define FIRE_MNGMT 	0x3
 
 #define DEBUG -1
+
+#define DEVICE_ADDRESS 	0x32 // Adress
+#define LINKED_ADDRESS 	0x17 // Address of the gateway
+#define NETID 			0x66 // Network id
+#define DEVICE_TYPE		GATEWAYS
 
 uint8_t rc_crc8(uint8_t *data, size_t len);
 
