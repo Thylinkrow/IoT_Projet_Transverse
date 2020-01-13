@@ -16,7 +16,7 @@ The messages are identified and checked
 **Packet header**  
 ![header](https://raw.githubusercontent.com/Thylinkrow/IoT_Projet_Transverse/master/header.png)
 
-The messages are encrypted (using *pseudo AES encryption* implementing *Sub byte*, *Rotate byte* and *Add round key*)
+The messages are encrypted (using [tiny AES](https://github.com/kokke/tiny-AES-c) by [kokke](https://github.com/kokke))
 The integrity of each messages is checked using a CRC
 
 ### Sending messages spread on multiple packets
