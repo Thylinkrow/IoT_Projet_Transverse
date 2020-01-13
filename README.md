@@ -26,3 +26,6 @@ When a packet is missing the recieving device can ask 3 times the sender to rese
 
 **Packet reconstruction**  
 ![packet](https://raw.githubusercontent.com/Thylinkrow/IoT_Projet_Transverse/master/packet.png)
+
+### Activity diagram
+![activity diagram](https://raw.githubusercontent.com/Thylinkrow/IoT_Projet_Transverse/master/IoT_Activity_Diagram.svg)
